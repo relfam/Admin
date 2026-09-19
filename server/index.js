@@ -446,6 +446,12 @@ app.get('/api/admin/referral-summary', requireAdminAuth, requireAccess('referral
   res.json({ ok: true, ...(await db.getReferralSummary()) });
 });
 
+/* ─────────────────────────── Feature interest ("Coming soon" tiles) ─────────────────────────── */
+
+app.get('/api/admin/feature-interest', requireAdminAuth, requireAccess('interest'), async (req, res) => {
+  res.json({ ok: true, ...(await db.getFeatureInterest()) });
+});
+
 app.patch('/api/admin/referral-rewards/:id', requireAdminAuth, requireAccess('referrals'), audit('Reviewed referral reward', 'Referrals'), async (req, res) => {
   const status = req.body?.status;
   if (!['paid', 'rejected'].includes(status)) return res.status(400).json({ ok: false, error: 'Status must be paid or rejected' });

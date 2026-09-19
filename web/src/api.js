@@ -56,6 +56,7 @@ export const api = {
 
   feedback: (status, rating) => request("/api/admin/feedback" + (status || rating ? `?status=${encodeURIComponent(status || "All")}&rating=${encodeURIComponent(rating || "All")}` : "")),
   setFeedbackStatus: (id, status) => request(`/api/admin/feedback/${id}/status`, { method: "PATCH", body: { status } }),
+  featureInterest: () => request("/api/admin/feature-interest"),
   referralRewards: (status) => request("/api/admin/referral-rewards" + (status ? `?status=${encodeURIComponent(status)}` : "")),
   reviewReferralReward: (id, status, note, reference) => request(`/api/admin/referral-rewards/${id}`, { method: "PATCH", body: { status, note, reference } }),
   referralSummary: () => request("/api/admin/referral-summary"),

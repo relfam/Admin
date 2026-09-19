@@ -24,6 +24,7 @@ import AdsScreen from "./screens/Ads";
 import SupportScreen from "./screens/Support";
 import FeedbackScreen from "./screens/Feedback";
 import ReferralsScreen from "./screens/Referrals";
+import FeatureInterestScreen from "./screens/FeatureInterest";
 import ContentScreen from "./screens/Content";
 import SettingsScreen from "./screens/Settings";
 import AdminsScreen from "./screens/Admins";
@@ -104,6 +105,7 @@ export default function RelfamAdmin({ admin, onLogout }) {
   const [feedback, setFeedback] = useState([]);
   const [referralRewards, setReferralRewards] = useState([]);
   const [referralSummary, setReferralSummary] = useState(null);
+  const [interest, setInterest] = useState(null);
   const [scheduled, setScheduled] = useState([]);
   const [fraudCases, setFraudCases] = useState([]);
   const [tickets, setTickets] = useState([]);
@@ -146,6 +148,7 @@ export default function RelfamAdmin({ admin, onLogout }) {
     api.referralRewards().then((d) => setReferralRewards(d.rewards.map(mapReferralReward))),
     api.referralSummary().then((d) => setReferralSummary({ totals: d.totals, pool: d.pool, referrers: d.referrers || [] })),
   ]);
+  const loadInterest = () => api.featureInterest().then((d) => setInterest(d)).catch(() => setInterest(null));
   const loadScheduled = () => api.scheduledNotifications().then((d) => setScheduled(d.scheduled.map(mapScheduled)));
   const loadFraud = () => api.fraudCases().then((d) => setFraudCases(d.cases.map(mapFraudCase)));
   const loadTickets = () => api.tickets().then((d) => setTickets(d.tickets.map(mapTicket)));
@@ -159,7 +162,7 @@ export default function RelfamAdmin({ admin, onLogout }) {
   useEffect(() => {
     Promise.all([
       loadDashboard(), loadUsers(), loadEvents(), loadGifts(), loadFamilies(), loadPackages(),
-      loadSubs(), loadFraud(), loadFeedback(), loadReferralRewards(), loadScheduled(), loadTickets(), loadAds(), loadFaq(), loadAnnounces(),
+      loadSubs(), loadFraud(), loadFeedback(), loadReferralRewards(), loadInterest(), loadScheduled(), loadTickets(), loadAds(), loadFaq(), loadAnnounces(),
       loadAdmins(), loadLogs(), loadSettings(),
     ]).then(() => setLoaded(true)).catch((err) => { console.error(err); setLoaded(true); });
   }, []);
@@ -218,6 +221,7 @@ export default function RelfamAdmin({ admin, onLogout }) {
     support: "Every ticket gets an owner — assign on creation, reassign anytime.",
     referrals: "Check the evidence, send the money to the UPI ID yourself, then mark it paid with the payment reference — the person is notified and sees Paid in their app.",
     feedback: "Ratings and comments submitted from the app's Feedback screen, newest first.",
+    interest: "How many people opened each Coming soon tile in the app, and how many asked to be told when it is ready.",
     families: "Family links captured by the app, grouped by the account that added them.",
     content: "FAQ and announcements are live-edited here; onboarding/theme copy is reference-only for now.",
     events: "Filter by user and date range, then export the view as CSV.",
@@ -265,6 +269,7 @@ export default function RelfamAdmin({ admin, onLogout }) {
       onResolve={async (id) => { await api.updateTicket(id, { status: "Resolved" }); await loadTickets(); loadLogs(); }} />,
     feedback: <FeedbackScreen feedback={feedback}
       onSetStatus={async (id, status) => { await api.setFeedbackStatus(id, status); await loadFeedback(); loadLogs(); }} />,
+    interest: <FeatureInterestScreen data={interest} onRefresh={loadInterest} />,
     referrals: <ReferralsScreen rewards={referralRewards} summary={referralSummary}
       onReview={async (id, status, note, reference) => { await api.reviewReferralReward(id, status, note, reference); await loadReferralRewards(); loadLogs(); }}
       onFraud={async (r, evidence) => { await api.createFraudCase({ userId: r.referrerId, type: "Referral abuse", severity: r.flags.length >= 2 ? "High" : "Medium", evidence, signal: r.flags.join(", ") || "Manual flag from Referral Payouts" }); await loadFraud(); await loadDashboard(); loadLogs(); }}

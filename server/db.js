@@ -1106,6 +1106,45 @@ async function getMonthlySeries() {
   return { signups, activeByMonth, eventsByMonth, giftsByMonth, revenueByMonth, eventTypes };
 }
 
+// "Coming soon" interest, written by the app (feature_interest table, created by the app server). Always returns every
+// known feature, with zeros when nobody has looked yet or the table does not exist yet.
+const INTEREST_FEATURES = [
+  { id: 'pay', label: 'Pay' },
+  { id: 'bills', label: 'Bills' },
+  { id: 'vendors', label: 'Vendors' },
+];
+async function getFeatureInterest() {
+  const base = INTEREST_FEATURES.map((f) => ({ ...f, tapped: 0, notify: 0, tapped7d: 0, notify7d: 0, daily: Array(14).fill(0), recent: [] }));
+  const empty = { totalUsers: 0, distinctTapped: 0, distinctNotify: 0, features: base };
+  try {
+    const totalUsers = (await pool.query('SELECT count(*)::int AS n FROM users')).rows[0].n;
+    const d = (await pool.query(`SELECT count(DISTINCT user_id)::int AS tapped, count(DISTINCT user_id) FILTER (WHERE notify)::int AS notify FROM feature_interest`)).rows[0];
+    const per = (await pool.query(`
+      SELECT feature,
+             count(*)::int AS tapped,
+             count(*) FILTER (WHERE notify)::int AS notify,
+             count(*) FILTER (WHERE tapped_at > now() - interval '7 days')::int AS tapped7d,
+             count(*) FILTER (WHERE notify AND notify_at > now() - interval '7 days')::int AS notify7d
+      FROM feature_interest GROUP BY feature`)).rows;
+    const daily = (await pool.query(`
+      SELECT feature, (now()::date - notify_at::date)::int AS ago, count(*)::int AS n
+      FROM feature_interest WHERE notify AND notify_at > now() - interval '14 days' GROUP BY 1, 2`)).rows;
+    const recent = (await pool.query(`
+      SELECT fi.feature, fi.notify_at, u.id, u.name, u.mobile, u.state, u.district
+      FROM feature_interest fi JOIN users u ON u.id = fi.user_id
+      WHERE fi.notify ORDER BY fi.notify_at DESC LIMIT 300`)).rows;
+    for (const f of base) {
+      const p = per.find((r) => r.feature === f.id); if (p) Object.assign(f, { tapped: p.tapped, notify: p.notify, tapped7d: p.tapped7d, notify7d: p.notify7d });
+      daily.filter((r) => r.feature === f.id && r.ago >= 0 && r.ago < 14).forEach((r) => { f.daily[13 - r.ago] = r.n; });
+      f.recent = recent.filter((r) => r.feature === f.id).slice(0, 25).map((r) => ({ userId: r.id, name: r.name, mobile: r.mobile, place: [r.district, r.state].filter(Boolean).join(', '), at: r.notify_at }));
+    }
+    return { totalUsers, distinctTapped: d.tapped, distinctNotify: d.notify, features: base };
+  } catch (err) {
+    console.error('getFeatureInterest failed (feature_interest table not created yet?):', err.message);
+    return empty;
+  }
+}
+
 module.exports = {
   pool, init,
   hashPassword, verifyPassword,
@@ -1120,7 +1159,7 @@ module.exports = {
   listFamilies, countFamilies, removeFamilyMember, addFamilyMember,
   listPackages, updatePackage,
   listSubscriptions, createSubscription, updateSubscriptionStatus,
-  listFeedback, updateFeedbackStatus,
+  listFeedback, updateFeedbackStatus, getFeatureInterest,
   listReferralRewards, getReferralSummary, reviewReferralReward, reopenReferralReward, referralNotice, findUserPushToken,
   listFraudCases, createFraudCase, updateFraudStatus, scanForFraud,
   listTickets, createTicket, updateTicket,

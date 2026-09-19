@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, CalendarDays, Gift, CreditCard, Home, FileText,
-  BarChart3, Bell, LifeBuoy, FolderOpen, Settings, ShieldCheck, ScrollText, Megaphone, MessageSquare,
+  BarChart3, Bell, LifeBuoy, FolderOpen, Settings, ShieldCheck, ScrollText, Megaphone, MessageSquare, Lightbulb,
 } from "lucide-react";
 
 export const C = {
@@ -71,6 +71,7 @@ export const MENU = [
   { id: "support", label: "Support", icon: LifeBuoy },
   { id: "feedback", label: "Feedback", icon: MessageSquare },
   { id: "referrals", label: "Referral Payouts", icon: Gift },
+  { id: "interest", label: "Feature Interest", icon: Lightbulb },
   { id: "content", label: "Content Management", icon: FolderOpen },
   { id: "settings", label: "Settings", icon: Settings },
   { id: "admins", label: "Admin Management", icon: ShieldCheck },
