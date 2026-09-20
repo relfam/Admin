@@ -89,6 +89,9 @@ export const api = {
   settings: () => request("/api/admin/settings"),
   updateSetting: (key, value) => request(`/api/admin/settings/${key}`, { method: "PATCH", body: value }),
   runBackup: () => request("/api/admin/backup/run", { method: "POST" }),
+  systemHealth: () => request("/api/admin/system-health"),
+  sendTestAlert: () => request("/api/admin/alerts/test", { method: "POST" }),
+  runRestoreTest: () => request("/api/admin/backup/restore-test", { method: "POST" }),
 
   admins: () => request("/api/admin/admins"),
   createAdmin: (body) => request("/api/admin/admins", { method: "POST", body }),

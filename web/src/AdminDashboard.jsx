@@ -25,6 +25,7 @@ import SupportScreen from "./screens/Support";
 import FeedbackScreen from "./screens/Feedback";
 import ReferralsScreen from "./screens/Referrals";
 import FeatureInterestScreen from "./screens/FeatureInterest";
+import SystemHealthScreen from "./screens/SystemHealth";
 import ContentScreen from "./screens/Content";
 import SettingsScreen from "./screens/Settings";
 import AdminsScreen from "./screens/Admins";
@@ -222,6 +223,7 @@ export default function RelfamAdmin({ admin, onLogout }) {
     referrals: "Check the evidence, send the money to the UPI ID yourself, then mark it paid with the payment reference — the person is notified and sees Paid in their app.",
     feedback: "Ratings and comments submitted from the app's Feedback screen, newest first.",
     interest: "How many people opened each Coming soon tile in the app, and how many asked to be told when it is ready.",
+    health: "Is the server up, can the backups really be restored, and what has been going wrong. Refreshes every 30 seconds.",
     families: "Family links captured by the app, grouped by the account that added them.",
     content: "FAQ and announcements are live-edited here; onboarding/theme copy is reference-only for now.",
     events: "Filter by user and date range, then export the view as CSV.",
@@ -270,6 +272,7 @@ export default function RelfamAdmin({ admin, onLogout }) {
     feedback: <FeedbackScreen feedback={feedback}
       onSetStatus={async (id, status) => { await api.setFeedbackStatus(id, status); await loadFeedback(); loadLogs(); }} />,
     interest: <FeatureInterestScreen data={interest} onRefresh={loadInterest} />,
+    health: <SystemHealthScreen />,
     referrals: <ReferralsScreen rewards={referralRewards} summary={referralSummary}
       onReview={async (id, status, note, reference) => { await api.reviewReferralReward(id, status, note, reference); await loadReferralRewards(); loadLogs(); }}
       onFraud={async (r, evidence) => { await api.createFraudCase({ userId: r.referrerId, type: "Referral abuse", severity: r.flags.length >= 2 ? "High" : "Medium", evidence, signal: r.flags.join(", ") || "Manual flag from Referral Payouts" }); await loadFraud(); await loadDashboard(); loadLogs(); }}

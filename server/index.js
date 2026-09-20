@@ -16,6 +16,7 @@ const crypto = require('crypto');
 const otplib = require('otplib');
 const qrcode = require('qrcode');
 const db = require('./db');
+const ops = require('./ops');
 
 const PORT = process.env.PORT || 4100;
 
@@ -593,50 +594,10 @@ app.patch('/api/admin/settings/:key', requireAdminAuth, requireAccess('settings'
    for "Mark backed up now", and a poller (mirroring runDueScheduledNotifications' own pattern —
    this server has no separate cron/worker process) that fires pg_dump on its own once the chosen
    Frequency has elapsed since the last one, whenever Auto backup is on. */
-const BACKUP_DIR = process.env.BACKUP_DIR || path.join(__dirname, 'backups');
-// Checked in this order: an explicit override, then the two PostgreSQL installs actually present
-// on this machine (server_version 18.6 is what `relfam` itself runs on — pg_dump is generally
-// backward-compatible with an older server but not guaranteed forward-compatible with a newer
-// one, so the matching major-version binary is tried first), then whatever's on PATH.
-function resolvePgDumpBin() {
-  const candidates = [
-    process.env.PG_DUMP_PATH,
-    'C:\\Program Files\\PostgreSQL\\18\\bin\\pg_dump.exe',
-    'C:\\Program Files\\PostgreSQL\\14\\bin\\pg_dump.exe',
-  ].filter(Boolean);
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-  return 'pg_dump';
-}
-
+// The dump, its check, retention, the second copy and the restore test live in ops.js (see there). A backup is only reported as done once
+// it has been verified as a complete dump.
 function runDatabaseBackup(trigger) {
-  return new Promise((resolve, reject) => {
-    fs.mkdirSync(BACKUP_DIR, { recursive: true });
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `relfam-${stamp}.sql`;
-    const outPath = path.join(BACKUP_DIR, filename);
-    const bin = resolvePgDumpBin();
-    const args = [
-      '-h', process.env.PGHOST || '127.0.0.1',
-      '-p', String(Number(process.env.PGPORT) || 5432),
-      '-U', process.env.PGUSER || 'postgres',
-      '-d', process.env.PGDATABASE || 'relfam',
-      '-F', 'p',
-      '-f', outPath,
-    ];
-    execFile(bin, args, { env: { ...process.env, PGPASSWORD: process.env.PGPASSWORD } }, async (err, stdout, stderr) => {
-      if (err) {
-        return reject(new Error(stderr?.trim() || err.message));
-      }
-      let sizeBytes = 0;
-      try { sizeBytes = fs.statSync(outPath).size; } catch (e) { /* stat is best-effort */ }
-      const current = (await db.getSettings()).backup || {};
-      const last = new Date().toISOString();
-      await db.updateSetting('backup', { ...current, last, lastFile: filename, lastTrigger: trigger, lastSizeBytes: sizeBytes });
-      resolve({ file: filename, sizeBytes, last });
-    });
-  });
+  return ops.runBackupCycle(trigger);
 }
 
 const BACKUP_FREQUENCY_MS = { Hourly: 60 * 60 * 1000, Daily: 24 * 60 * 60 * 1000, Weekly: 7 * 24 * 60 * 60 * 1000 };
@@ -660,6 +621,16 @@ async function runDueAutoBackup() {
   }
 }
 
+// System Health: is the server up, are backups restorable, what has been going wrong (see ops.js).
+app.get('/api/admin/system-health', requireAdminAuth, requireAccess('health'), async (req, res) => {
+  res.json({ ok: true, health: await ops.systemHealth() });
+});
+app.post('/api/admin/alerts/test', requireAdminAuth, requireAccess('health'), audit('Sent a test alert', 'Monitoring'), async (req, res) => {
+  res.json({ ok: true, ...(await ops.sendTestAlert()) });
+});
+app.post('/api/admin/backup/restore-test', requireAdminAuth, requireAccess('health'), audit('Ran a backup restore test', 'Monitoring'), async (req, res) => {
+  res.json({ ok: true, result: await ops.runRestoreTestNow() });
+});
 app.post('/api/admin/backup/run', requireAdminAuth, requireAccess('settings'), audit('Ran manual database backup', 'Settings'), async (req, res) => {
   try {
     const result = await runDatabaseBackup('manual');
@@ -728,6 +699,8 @@ db.init()
     // minutes late is harmless, and polling more often than that just burns cycles for no benefit.
     setInterval(runDueAutoBackup, 5 * 60000);
     runDueAutoBackup();
+    // Watches the app server, error spikes, restore tests and overdue backups; alerts by email when ALERT_EMAIL_TO and RESEND_API_KEY are set.
+    ops.start();
   })
   .catch((err) => {
     console.error('Failed to initialize database:', err);
