@@ -7,19 +7,22 @@ export default function EventsScreen({ events }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("All");
   const [host, setHost] = useState("All");
+  const [creator, setCreator] = useState("All");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const hosts = [...new Set(events.map((e) => e.host))];
+  const creators = [...new Set(events.map((e) => e.createdBy))];
   const rows = events.filter((e) => {
     const mq = !q || (e.id + " " + e.name + " " + e.host).toLowerCase().includes(q.toLowerCase());
     const mf = filter === "All" || e.status === filter || e.type === filter;
     const mh = host === "All" || e.host === host;
+    const mc = creator === "All" || e.createdBy === creator;
     const md = (!from || e.iso >= from) && (!to || e.iso <= to);
-    return mq && mf && mh && md;
+    return mq && mf && mh && mc && md;
   });
   const exportCSV = () => {
-    const head = ["Event ID", "Event", "Type", "Host", "Host UID", "Place", "Date", "Gifts", "Total (INR)", "Status"];
-    const lines = rows.map((e) => [e.id, '"' + e.name + '"', e.type, e.host, e.hostUid, '"' + e.place + '"', e.date, e.gifts, e.total, e.status].join(","));
+    const head = ["Event ID", "Event", "Type", "Host", "Created By", "Host UID", "Place", "Date", "Gifts", "Total (INR)", "Status"];
+    const lines = rows.map((e) => [e.id, '"' + e.name + '"', e.type, e.host, e.createdBy, e.hostUid, '"' + e.place + '"', e.date, e.gifts, e.total, e.status].join(","));
     const blob = new Blob([[head.join(","), ...lines].join("\n")], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -30,7 +33,7 @@ export default function EventsScreen({ events }) {
   return (
     <div className="rf-fade">
       <TableCard
-        columns={["Event ID", "Event", "Type", "Host", "User ID", "Place", "Date", "Gifts", "Total Collection", "Status"]}
+        columns={["Event ID", "Event", "Type", "Host", "Created By", "User ID", "Place", "Date", "Gifts", "Total Collection", "Status"]}
         rows={rows}
         empty="No events match this search/filter."
         controls={<>
@@ -38,6 +41,10 @@ export default function EventsScreen({ events }) {
           <select className="rf-input plain" style={{ width: 190, padding: "9px 12px" }} value={host} onChange={(e) => setHost(e.target.value)} title="Filter by user">
             <option value="All">All users</option>
             {hosts.map((h) => <option key={h} value={h}>{h}</option>)}
+          </select>
+          <select className="rf-input plain" style={{ width: 170, padding: "9px 12px" }} value={creator} onChange={(e) => setCreator(e.target.value)} title="Filter by who created the event">
+            <option value="All">All creators</option>
+            {creators.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.sub }}>
             <span>From</span>
@@ -53,13 +60,14 @@ export default function EventsScreen({ events }) {
             <FilterChips items={["All", "Live", "Upcoming", "Completed"]} active={filter} onSelect={setFilter} />
           </div>
         </>}
-        footer={`Showing ${rows.length} of ${events.length} events${host !== "All" ? " · user: " + host : ""}`}
+        footer={`Showing ${rows.length} of ${events.length} events${host !== "All" ? " · user: " + host : ""}${creator !== "All" ? " · created by: " + creator : ""}`}
         renderRow={(e) => (
           <tr key={e.id}>
             <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: C.primary, fontWeight: 600 }}>{e.id}</td>
             <td style={{ fontWeight: 600 }}>{e.name}</td>
             <td><Chip text={e.type} tone={[C.primary, C.primarySoft]} /></td>
             <td><div style={{ display: "flex", alignItems: "center", gap: 8 }}><Avatar name={e.host} size={26} />{e.host}</div></td>
+            <td>{e.createdBy === "Not recorded" ? <span style={{ color: C.sub, fontSize: 12 }}>Not recorded</span> : <Chip text={e.createdBy} />}</td>
             <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: C.primary, fontWeight: 600 }}>{e.hostUid}</td>
             <td style={{ color: C.sub }}>{e.place}</td>
             <td style={{ color: C.sub }}>{e.date}</td>

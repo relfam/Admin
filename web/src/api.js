@@ -179,6 +179,8 @@ export function mapEvent(e) {
     host: e.host_name,
     hostId: e.host_id,
     hostUid: "RLF-" + String(10000 + e.host_id),
+    // Who set the event up for the host (Self / Parent / Brother …), as the host chose it. Older events have none.
+    createdBy: e.created_by || "Not recorded",
     place: e.venue || "—",
     date: e.date || "—",
     gifts: e.gifts_count ?? 0,

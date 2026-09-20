@@ -525,7 +525,7 @@ async function cancelScheduledNotification(id) {
 
 async function listEvents() {
   const { rows } = await pool.query(`
-    SELECT e.owner_user_id, e.client_id, e.name, e.type, e.date, e.venue, e.target_amount, e.code,
+    SELECT e.owner_user_id, e.client_id, e.name, e.type, e.date, e.venue, e.target_amount, e.code, e.created_by,
       u.id AS host_id, u.name AS host_name,
       COALESCE(g.cnt, 0)::int AS gifts_count, COALESCE(g.total, 0)::bigint AS total_amount
     FROM events e
