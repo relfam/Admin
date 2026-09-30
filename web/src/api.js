@@ -15,7 +15,9 @@ async function request(path, { method = "GET", body } = {}) {
   });
   let data;
   try { data = await res.json(); } catch { data = null; }
-  if (res.status === 401) {
+  // A 401 means "signed out" only when there was a session. At sign-in and the 2FA step there is none yet: a 401
+  // there is a wrong password or code, and the server's own message says which.
+  if (res.status === 401 && getToken()) {
     setToken(null);
     window.location.reload();
     throw new Error("Session expired");

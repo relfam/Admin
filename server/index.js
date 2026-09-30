@@ -105,6 +105,10 @@ process.on('unhandledRejection', (err) => console.error('Unhandled rejection (se
 process.on('uncaughtException', (err) => console.error('Uncaught exception (server stayed up):', err));
 
 const app = express();
+// Behind nginx on the same machine: the visitor's address comes from its X-Forwarded-For. Without this every
+// request looks like 127.0.0.1, so the login limit below would count all admins as one person. 'loopback' trusts
+// that header only from nginx itself, never from the internet.
+app.set('trust proxy', 'loopback');
 app.use(cors(corsOptions));
 // Higher than the default — ad creatives are sent as base64 data URLs (see AdsScreen's image
 // upload in the web app), same tradeoff the mobile server makes for event cover photos.
