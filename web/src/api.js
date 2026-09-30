@@ -92,6 +92,9 @@ export const api = {
   updateSetting: (key, value) => request(`/api/admin/settings/${key}`, { method: "PATCH", body: value }),
   runBackup: () => request("/api/admin/backup/run", { method: "POST" }),
   systemHealth: () => request("/api/admin/system-health"),
+  dailyChecks: () => request("/api/admin/daily-checks"),
+  markDailyCheck: (id) => request(`/api/admin/daily-checks/${encodeURIComponent(id)}/checked`, { method: "POST" }),
+  setVpsRenewal: (date) => request("/api/admin/daily-checks/vps-renewal", { method: "POST", body: { date } }),
   sendTestAlert: () => request("/api/admin/alerts/test", { method: "POST" }),
   runRestoreTest: () => request("/api/admin/backup/restore-test", { method: "POST" }),
 

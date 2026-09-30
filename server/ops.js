@@ -301,8 +301,8 @@ async function checkAppServer() {
 const uptimePct = () => (watch.history.length ? Math.round((watch.history.filter(Boolean).length / watch.history.length) * 1000) / 10 : null);
 
 /* ───────────── error spikes ───────────── */
-const SPIKE_LIMITS = { api_5xx: 10, db_error: 3, login_failed: 40, push_failed: 20, qr_failed: 15, upi_failed: 10 };
-const KIND_LABEL = { api_5xx: 'Server errors', db_error: 'Database errors', login_failed: 'Failed logins', push_failed: 'Push notification failures', push_dead: 'Expired push tokens', qr_failed: 'QR problems', upi_failed: 'UPI payment problems' };
+const SPIKE_LIMITS = { api_5xx: 10, db_error: 3, login_failed: 40, push_failed: 20, qr_failed: 15, upi_failed: 10, sms_failed: 3, email_failed: 3, maps_failed: 10 };
+const KIND_LABEL = { api_5xx: 'Server errors', db_error: 'Database errors', login_failed: 'Failed logins', push_failed: 'Push notification failures', push_dead: 'Expired push tokens', qr_failed: 'QR problems', upi_failed: 'UPI payment problems', sms_failed: 'SMS codes failing (MSG91)', email_failed: 'Emails failing (Resend)', maps_failed: 'Google Maps lookups failing' };
 async function checkSpikes() {
   let rows = [];
   try { rows = (await db.pool.query("SELECT kind, count(*)::int AS n FROM monitoring_events WHERE at > now() - interval '5 minutes' GROUP BY kind")).rows; } catch (err) { return []; }

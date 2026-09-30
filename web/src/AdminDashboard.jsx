@@ -5,6 +5,7 @@ import {
 import { C, css, inr, MENU } from "./theme";
 import { Avatar } from "./components/shared";
 import GlobalSearch from "./components/GlobalSearch";
+import DailyChecks from "./components/DailyChecks";
 import {
   api, mapUser, mapEvent, mapGift, mapFamily, mapSubscription, mapFraudCase, mapTicket,
   mapAd, mapAdmin, mapLog, mapFeedback, mapScheduled, mapReferralReward,
@@ -357,6 +358,7 @@ export default function RelfamAdmin({ admin, onLogout }) {
         </header>
 
         <main style={{ padding: 28, maxWidth: 1440, width: "100%", margin: "0 auto" }}>
+          <DailyChecks />
           <div style={{ marginBottom: 20 }}>
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: "-0.025em" }}>{title}</h1>
             <p style={{ margin: "4px 0 0", fontSize: 13, color: C.sub }}>{subtitle}</p>

@@ -17,6 +17,7 @@ const otplib = require('otplib');
 const qrcode = require('qrcode');
 const db = require('./db');
 const ops = require('./ops');
+const dailyChecks = require('./dailyChecks');
 
 const PORT = process.env.PORT || 4100;
 
@@ -626,6 +627,18 @@ async function runDueAutoBackup() {
 }
 
 // System Health: is the server up, are backups restorable, what has been going wrong (see ops.js).
+// Daily checks card (dailyChecks.js), pinned above every screen for admins who can see System Health.
+const sendCheckError = (res, err) => res.status(err.status || 500).json({ ok: false, error: err.status ? err.message : 'Could not load the daily checks' });
+app.get('/api/admin/daily-checks', requireAdminAuth, requireAccess('health'), async (req, res) => {
+  try { res.json({ ok: true, ...(await dailyChecks.getDailyChecks()) }); } catch (err) { console.error('daily checks:', err); sendCheckError(res, err); }
+});
+app.post('/api/admin/daily-checks/:id/checked', requireAdminAuth, requireAccess('health'), audit('Marked a daily check done', 'Monitoring'), async (req, res) => {
+  try { res.json({ ok: true, ...(await dailyChecks.markChecked(req.params.id, req.admin.name)) }); } catch (err) { sendCheckError(res, err); }
+});
+app.post('/api/admin/daily-checks/vps-renewal', requireAdminAuth, requireAccess('health'), audit('Set the VPS renewal date', 'Monitoring'), async (req, res) => {
+  try { res.json({ ok: true, ...(await dailyChecks.setVpsRenewal(req.body && req.body.date)) }); } catch (err) { sendCheckError(res, err); }
+});
+
 app.get('/api/admin/system-health', requireAdminAuth, requireAccess('health'), async (req, res) => {
   res.json({ ok: true, health: await ops.systemHealth() });
 });
@@ -705,6 +718,10 @@ db.init()
     runDueAutoBackup();
     // Watches the app server, error spikes, restore tests and overdue backups; alerts by email when ALERT_EMAIL_TO and RESEND_API_KEY are set.
     ops.start();
+    // Once a day at most (one alert key per date): emails whatever the Daily checks card shows in red. Checked hourly
+    // so a problem that starts in the afternoon is still reported the same day.
+    setInterval(() => dailyChecks.runDailyAlert(ops.sendAlert), 60 * 60000);
+    setTimeout(() => dailyChecks.runDailyAlert(ops.sendAlert), 2 * 60000);
   })
   .catch((err) => {
     console.error('Failed to initialize database:', err);
