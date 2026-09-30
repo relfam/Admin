@@ -449,7 +449,8 @@ async function setUserStatus(id, status) {
 // no-op in practice, it's harmless to allow).
 async function listPushTokensForAudience(audience, { userIds, states, districts } = {}) {
   const params = [];
-  let where = `u.push_token IS NOT NULL`;
+  // Campaign pushes never go to accounts that declared themselves under 18 (the app's Privacy Policy says so).
+  let where = `u.push_token IS NOT NULL AND u.age_group IS DISTINCT FROM 'minor'`;
   if (userIds && userIds.length) {
     params.push(userIds);
     where += ` AND u.id = ANY($${params.length})`;
