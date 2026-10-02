@@ -452,8 +452,9 @@ async function setUserStatus(id, status) {
 // no-op in practice, it's harmless to allow).
 async function listPushTokensForAudience(audience, { userIds, states, districts } = {}) {
   const params = [];
-  // Campaign pushes never go to accounts that declared themselves under 18 (the app's Privacy Policy says so).
-  let where = `u.push_token IS NOT NULL AND u.age_group IS DISTINCT FROM 'minor'`;
+  // Campaign pushes never go to under-18 accounts (the app's Privacy Policy says so): by the profile date of birth when it
+  // is set (so it changes on the 18th birthday), otherwise by what was answered at sign-up. Same rule as isUnder18 in the app server.
+  let where = `u.push_token IS NOT NULL AND NOT COALESCE(u.dob > CURRENT_DATE - INTERVAL '18 years', u.age_group = 'minor', false)`;
   if (userIds && userIds.length) {
     params.push(userIds);
     where += ` AND u.id = ANY($${params.length})`;
