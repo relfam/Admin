@@ -1,30 +1,68 @@
 import React, { useMemo, useRef, useState } from "react";
-import { Megaphone, Clock, FileText, BarChart3, Plus, Send, Trash2, ImagePlus, X, Link2 } from "lucide-react";
+import { Megaphone, Clock, FileText, BarChart3, Plus, Send, Trash2, ImagePlus, X, Link2, ChevronLeft, ChevronRight, Film } from "lucide-react";
 import { C, AD_EVENT_TYPES } from "../theme";
 import { Chip, Toggle, Field, Modal } from "../components/shared";
 import LocationTargetFields from "../components/LocationTarget";
 import UserMultiSelect from "../components/UserMultiSelect";
+import { api, adMediaUrl } from "../api";
 
-const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2MB — plenty for a banner, keeps the JSON payload/DB row sane
+// Several images and videos per ad — shown in the app as a strip people swipe through. Files are uploaded to the server
+// one by one as they're picked (adMedia.js there checks type and size again).
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
+const MAX_MEDIA = 10;
+
+function MediaThumb({ item, size = 96 }) {
+  const src = adMediaUrl(item.path);
+  const box = { width: size, height: Math.round(size * 9 / 16), borderRadius: 10, objectFit: "cover", border: `1px solid ${C.border}`, background: "#0b0b0f", display: "block" };
+  if (item.type === "video") return <video src={src} muted playsInline preload="metadata" style={box} />;
+  return <img src={src} alt="" style={box} />;
+}
 
 export default function AdsScreen({ ads, events, users, onPublish, onToggle, onDelete }) {
   const [showNew, setShowNew] = useState(false);
-  const [imageError, setImageError] = useState("");
+  const [mediaError, setMediaError] = useState("");
+  const [uploading, setUploading] = useState(0);
   const fileInputRef = useRef(null);
-  const blank = { title: "", body: "", evType: "All types", targetUserIds: [], placement: "Event page banner", image: "", linkUrl: "", maxPerDayChoice: "All day", maxPerDayCustom: "", customFrom: "", customTo: "", targetStates: [], targetDistricts: [] };
+  const blank = { title: "", body: "", evType: "All types", targetUserIds: [], placement: "Event page banner", media: [], linkUrl: "", maxPerDayChoice: "All day", maxPerDayCustom: "", customFrom: "", customTo: "", targetStates: [], targetDistricts: [] };
   const [form, setForm] = useState(blank);
 
-  const onPickImage = (e) => {
-    const file = e.target.files?.[0];
+  const onPickMedia = async (e) => {
+    const files = [...(e.target.files || [])];
     e.target.value = "";
-    if (!file) return;
-    setImageError("");
-    if (!file.type.startsWith("image/")) { setImageError("Please choose an image file."); return; }
-    if (file.size > MAX_IMAGE_BYTES) { setImageError("Image is too large — please use one under 2MB."); return; }
-    const reader = new FileReader();
-    reader.onload = () => setForm((f) => ({ ...f, image: reader.result }));
-    reader.readAsDataURL(file);
+    if (!files.length) return;
+    setMediaError("");
+    const room = MAX_MEDIA - form.media.length;
+    if (room <= 0) { setMediaError(`An ad can have up to ${MAX_MEDIA} images and videos.`); return; }
+    const problems = [];
+    const ok = files.slice(0, room).filter((f) => {
+      const isVideo = f.type.startsWith("video/"), isImage = f.type.startsWith("image/");
+      if (!isVideo && !isImage) { problems.push(`${f.name}: not an image or video`); return false; }
+      if (isImage && f.size > MAX_IMAGE_BYTES) { problems.push(`${f.name}: images must be under 5 MB`); return false; }
+      if (isVideo && f.size > MAX_VIDEO_BYTES) { problems.push(`${f.name}: videos must be under 30 MB`); return false; }
+      return true;
+    });
+    if (files.length > room) problems.push(`Only ${room} more can be added (up to ${MAX_MEDIA} per ad).`);
+    for (const f of ok) {
+      setUploading((n) => n + 1);
+      try {
+        const saved = await api.uploadAdMedia(f);
+        setForm((cur) => ({ ...cur, media: [...cur.media, { type: saved.type, path: saved.path }] }));
+      } catch (err) {
+        problems.push(`${f.name}: ${err.message}`);
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    }
+    if (problems.length) setMediaError(problems.join(" · "));
   };
+  const moveMedia = (i, dir) => setForm((f) => {
+    const m = [...f.media]; const j = i + dir;
+    if (j < 0 || j >= m.length) return f;
+    [m[i], m[j]] = [m[j], m[i]];
+    return { ...f, media: m };
+  });
+  const removeMedia = (i) => setForm((f) => ({ ...f, media: f.media.filter((_, k) => k !== i) }));
 
   const reach = useMemo(() => events.filter((e) => {
     const mt = form.evType === "All types" || e.type === form.evType;
@@ -42,7 +80,7 @@ export default function AdsScreen({ ads, events, users, onPublish, onToggle, onD
     await onPublish({
       title: form.title, body: form.body, eventType: form.evType,
       targetUserIds: form.targetUserIds.length ? form.targetUserIds : null,
-      placement: form.placement, image: form.image, linkUrl: form.linkUrl, maxPerDay, status,
+      placement: form.placement, media: form.media, linkUrl: form.linkUrl, maxPerDay, status,
       dateMode, from: isCustom ? (form.customFrom || null) : null, to: isCustom ? (form.customTo || null) : null,
       targetStates: form.targetStates.length ? form.targetStates : null,
       targetDistricts: form.targetDistricts.length ? form.targetDistricts : null,
@@ -84,7 +122,12 @@ export default function AdsScreen({ ads, events, users, onPublish, onToggle, onD
           {ads.length === 0 && <div style={{ padding: 20, textAlign: "center", color: C.sub, fontSize: 13 }}>No ad campaigns yet.</div>}
           {ads.map((a) => (
             <div key={a.id} className="rf-card" style={{ padding: 16, display: "flex", gap: 14, alignItems: "flex-start", borderRadius: 14 }}>
-              {a.image ? (
+              {a.media?.length ? (
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  <MediaThumb item={a.media[0]} size={64} />
+                  {a.media.length > 1 && <span style={{ position: "absolute", right: 3, bottom: 3, fontSize: 10, fontWeight: 700, color: "#fff", background: "rgba(0,0,0,.6)", borderRadius: 6, padding: "1px 5px" }}>+{a.media.length - 1}</span>}
+                </div>
+              ) : a.image ? (
                 <img src={a.image} alt="" style={{ width: 64, height: 40, borderRadius: 10, objectFit: "cover", flexShrink: 0, border: `1px solid ${C.border}` }} />
               ) : (
                 <div style={{ width: 40, height: 40, borderRadius: 12, background: a.status === "Live" ? C.successSoft : a.status === "Paused" ? C.warningSoft : "#F3F4F6", color: a.status === "Live" ? C.success : a.status === "Paused" ? C.warning : C.sub, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Megaphone size={17} /></div>
@@ -128,20 +171,31 @@ export default function AdsScreen({ ads, events, users, onPublish, onToggle, onD
           <Field label="Message">
             <textarea className="rf-input plain" rows={2} style={{ resize: "vertical" }} placeholder="Short ad copy shown to users…" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
           </Field>
-          <Field label="Ad image">
-            <input ref={fileInputRef} type="file" accept="image/*" onChange={onPickImage} style={{ display: "none" }} />
-            {form.image ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <img src={form.image} alt="Ad preview" style={{ width: 140, height: 78, borderRadius: 10, objectFit: "cover", border: `1px solid ${C.border}` }} />
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <button type="button" className="rf-btn ghost" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => fileInputRef.current?.click()}><ImagePlus size={13} /> Replace</button>
-                  <button type="button" className="rf-btn ghost" style={{ padding: "6px 12px", fontSize: 12, color: C.error }} onClick={() => setForm({ ...form, image: "" })}><X size={13} /> Remove</button>
-                </div>
+          <Field label={`Images & videos (${form.media.length}/${MAX_MEDIA})`}>
+            <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime" multiple onChange={onPickMedia} style={{ display: "none" }} />
+            {form.media.length > 0 && (
+              <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6, marginBottom: 8 }}>
+                {form.media.map((m, i) => (
+                  <div key={m.path} style={{ flexShrink: 0 }}>
+                    <div style={{ position: "relative" }}>
+                      <MediaThumb item={m} size={120} />
+                      {m.type === "video" && <span style={{ position: "absolute", left: 6, top: 6, color: "#fff", background: "rgba(0,0,0,.55)", borderRadius: 6, padding: "1px 5px", fontSize: 10, display: "inline-flex", alignItems: "center", gap: 3, pointerEvents: "none" }}><Film size={10} /> Video</span>}
+                      <span style={{ position: "absolute", left: 6, bottom: 6, color: "#fff", background: "rgba(0,0,0,.55)", borderRadius: 6, padding: "1px 6px", fontSize: 10, fontWeight: 700, pointerEvents: "none" }}>{i + 1}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                      <button type="button" className="rf-icon-btn" style={{ width: 26, height: 26 }} title="Move left" disabled={i === 0} onClick={() => moveMedia(i, -1)}><ChevronLeft size={13} /></button>
+                      <button type="button" className="rf-icon-btn" style={{ width: 26, height: 26, color: C.error }} title="Remove" onClick={() => removeMedia(i)}><X size={13} /></button>
+                      <button type="button" className="rf-icon-btn" style={{ width: 26, height: 26 }} title="Move right" disabled={i === form.media.length - 1} onClick={() => moveMedia(i, 1)}><ChevronRight size={13} /></button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ) : (
-              <button type="button" className="rf-btn ghost" onClick={() => fileInputRef.current?.click()}><ImagePlus size={14} /> Upload image</button>
             )}
-            {imageError && <div style={{ fontSize: 11.5, color: C.error, marginTop: 6 }}>{imageError}</div>}
+            <button type="button" className="rf-btn ghost" disabled={uploading > 0 || form.media.length >= MAX_MEDIA} onClick={() => fileInputRef.current?.click()}>
+              <ImagePlus size={14} /> {uploading > 0 ? `Uploading ${uploading}…` : form.media.length ? "Add more" : "Add images or videos"}
+            </button>
+            <div style={{ fontSize: 11.5, color: C.sub, marginTop: 6 }}>Up to {MAX_MEDIA}. Images under 5 MB, videos (MP4, WEBM, MOV) under 30 MB. People swipe through them in the app, in this order.</div>
+            {mediaError && <div style={{ fontSize: 11.5, color: C.error, marginTop: 6 }}>{mediaError}</div>}
           </Field>
           <Field label="Link URL (optional)">
             <input className="rf-input plain" placeholder="https://…" value={form.linkUrl} onChange={(e) => setForm({ ...form, linkUrl: e.target.value })} />
@@ -194,8 +248,8 @@ export default function AdsScreen({ ads, events, users, onPublish, onToggle, onD
             Reaches {reach.length} matching event{reach.length === 1 ? "" : "s"}{reach.length > 0 ? ": " + reach.map((e) => e.name).slice(0, 3).join(", ") + (reach.length > 3 ? "…" : "") : " — widen your targeting."}
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <button className="rf-btn primary" style={{ flex: 1, justifyContent: "center" }} disabled={!form.title.trim()} onClick={() => publish("Live")}><Send size={14} /> Publish now</button>
-            <button className="rf-btn ghost" disabled={!form.title.trim()} onClick={() => publish("Draft")}>Save draft</button>
+            <button className="rf-btn primary" style={{ flex: 1, justifyContent: "center" }} disabled={!form.title.trim() || uploading > 0} onClick={() => publish("Live")}><Send size={14} /> Publish now</button>
+            <button className="rf-btn ghost" disabled={!form.title.trim() || uploading > 0} onClick={() => publish("Draft")}>Save draft</button>
             <button className="rf-btn ghost" onClick={() => setShowNew(false)}>Cancel</button>
           </div>
         </Modal>

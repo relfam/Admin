@@ -128,6 +128,9 @@ async function init() {
     ALTER TABLE ads ADD COLUMN IF NOT EXISTS target_district TEXT;
     ALTER TABLE ads ADD COLUMN IF NOT EXISTS target_states TEXT[];
     ALTER TABLE ads ADD COLUMN IF NOT EXISTS target_districts TEXT[];
+    -- Several images and videos per ad, shown as a swipeable strip in the app: [{ type: 'image'|'video', path: '/media/ads/<file>' }].
+    -- Files live on disk (adMedia.js). Older ads keep using the single data-URL image above.
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS media JSONB;
     -- Multi-user targeting, replacing the old single target_user_id (still present, unused going
     -- forward) — NULL/empty means not restricted to specific users.
     ALTER TABLE ads ADD COLUMN IF NOT EXISTS target_user_ids INTEGER[];
@@ -1006,11 +1009,11 @@ async function listAds() {
   return rows;
 }
 
-async function createAd({ title, body, eventType, targetUserIds, placement, status, image, linkUrl, maxPerDay, dateMode, from, to, targetStates, targetDistricts }) {
+async function createAd({ title, body, eventType, targetUserIds, placement, status, image, linkUrl, maxPerDay, dateMode, from, to, targetStates, targetDistricts, media }) {
   const { rows } = await pool.query(
-    `INSERT INTO ads (title, body, event_type, target_user_ids, placement, status, image, link_url, max_per_day, date_mode, from_date, to_date, target_states, target_districts)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
-    [title, body || null, eventType || 'All types', targetUserIds || null, placement || 'Event page banner', status || 'Draft', image || null, linkUrl || null, maxPerDay || null, dateMode || 'All dates', from || null, to || null, targetStates || null, targetDistricts || null]
+    `INSERT INTO ads (title, body, event_type, target_user_ids, placement, status, image, link_url, max_per_day, date_mode, from_date, to_date, target_states, target_districts, media)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
+    [title, body || null, eventType || 'All types', targetUserIds || null, placement || 'Event page banner', status || 'Draft', image || null, linkUrl || null, maxPerDay || null, dateMode || 'All dates', from || null, to || null, targetStates || null, targetDistricts || null, media ? JSON.stringify(media) : null]
   );
   return rows[0];
 }
@@ -1020,8 +1023,10 @@ async function updateAdStatus(id, status) {
   return rows[0];
 }
 
+// Returns the deleted ad's media list, so its files can be removed from disk too.
 async function deleteAd(id) {
-  await pool.query('DELETE FROM ads WHERE id = $1', [id]);
+  const { rows } = await pool.query('DELETE FROM ads WHERE id = $1 RETURNING media', [id]);
+  return (rows[0] && Array.isArray(rows[0].media)) ? rows[0].media : [];
 }
 
 /* ─────────────────────────── Content: FAQs & announcements ─────────────────────────── */

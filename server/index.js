@@ -18,6 +18,7 @@ const qrcode = require('qrcode');
 const db = require('./db');
 const ops = require('./ops');
 const dailyChecks = require('./dailyChecks');
+const adMedia = require('./adMedia');
 
 const PORT = process.env.PORT || 4100;
 
@@ -538,7 +539,21 @@ app.get('/api/admin/ads', requireAdminAuth, requireAccess('ads'), async (req, re
 
 app.post('/api/admin/ads', requireAdminAuth, requireAccess('ads'), audit('Created ad', 'Advertisements'), async (req, res) => {
   if (!req.body?.title) return res.status(400).json({ ok: false, error: 'title is required' });
-  res.json({ ok: true, ad: await db.createAd(req.body) });
+  res.json({ ok: true, ad: await db.createAd({ ...req.body, media: adMedia.cleanMediaList(req.body.media) }) });
+});
+
+// One image or video for an ad, sent as the raw file (not JSON). Saved to disk (adMedia.js); the ad is then created with
+// the returned path in its media list.
+app.post('/api/admin/ad-media', requireAdminAuth, requireAccess('ads'), express.raw({ type: () => true, limit: adMedia.MAX_VIDEO_BYTES + 1024 }), (req, res) => {
+  const saved = adMedia.saveUpload(req.body);
+  if (saved.error) return res.status(400).json({ ok: false, error: saved.error });
+  res.json({ ok: true, ...saved });
+});
+// Previews in the admin web (the admin site sends only /api to this server). Ad media is public anyway — the app shows it.
+app.get('/api/admin/ad-media/:name', (req, res) => {
+  const file = adMedia.filePathFor(req.params.name);
+  if (!file) return res.status(404).end();
+  res.sendFile(file, { maxAge: '30d', immutable: true });
 });
 
 app.patch('/api/admin/ads/:id/status', requireAdminAuth, requireAccess('ads'), audit('Changed ad status', 'Advertisements'), async (req, res) => {
@@ -548,7 +563,8 @@ app.patch('/api/admin/ads/:id/status', requireAdminAuth, requireAccess('ads'), a
 });
 
 app.delete('/api/admin/ads/:id', requireAdminAuth, requireAccess('ads'), audit('Deleted ad', 'Advertisements'), async (req, res) => {
-  await db.deleteAd(Number(req.params.id));
+  const media = await db.deleteAd(Number(req.params.id));
+  for (const m of media) { const f = m && adMedia.filePathFor(String(m.path || '').split('/').pop()); if (f) fs.unlink(f, () => {}); }
   res.json({ ok: true });
 });
 

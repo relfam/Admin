@@ -77,6 +77,13 @@ export const api = {
   createAd: (body) => request("/api/admin/ads", { method: "POST", body }),
   setAdStatus: (id, status) => request(`/api/admin/ads/${id}/status`, { method: "PATCH", body: { status } }),
   deleteAd: (id) => request(`/api/admin/ads/${id}`, { method: "DELETE" }),
+  // One ad image/video, sent as the raw file. Returns { path, type }.
+  uploadAdMedia: async (file) => {
+    const res = await fetch(BASE + "/api/admin/ad-media", { method: "POST", headers: { "Content-Type": file.type || "application/octet-stream", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) }, body: file });
+    let data; try { data = await res.json(); } catch { data = null; }
+    if (!res.ok || !data?.ok) throw new Error(data?.error || (res.status === 413 ? "That file is too large" : `Upload failed (${res.status})`));
+    return data;
+  },
 
   faqs: () => request("/api/admin/faqs"),
   createFaq: (body) => request("/api/admin/faqs", { method: "POST", body }),
@@ -323,6 +330,9 @@ export function mapTicket(t) {
   };
 }
 
+// Where the admin web can show an uploaded ad image/video (the admin site only reaches this server under /api).
+export const adMediaUrl = (p) => (p && p.startsWith("/media/ads/") ? `${BASE}/api/admin/ad-media/${p.split("/").pop()}` : p);
+
 export function mapAd(a) {
   return {
     id: "AD-" + a.id,
@@ -330,6 +340,7 @@ export function mapAd(a) {
     title: a.title,
     body: a.body || "",
     image: a.image || "",
+    media: Array.isArray(a.media) ? a.media : [],
     link: a.link_url || "",
     evType: a.event_type,
     user: a.target_user_names?.length ? (a.target_user_names.length > 2 ? `${a.target_user_names.length} users` : a.target_user_names.join(", ")) : "All users",
