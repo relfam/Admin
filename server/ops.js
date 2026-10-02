@@ -240,6 +240,27 @@ function copyOffsite(file) {
     return { configured: true, ok: true, at: new Date().toISOString() };
   } catch (err) { return { configured: true, ok: false, at: new Date().toISOString(), error: err.message }; }
 }
+// The ads' images and videos live on disk (AD_MEDIA_DIR, adMedia.js), not in the database dump — so each backup run also
+// copies any new ones into <backupDir>/ad-media (and the second location, when set). Their names are random and never
+// reused, so a file already copied is never copied again; files deleted from ads are kept here in case an ad is wanted back.
+function mirrorAdMedia() {
+  const src = process.env.AD_MEDIA_DIR;
+  if (!src || !fs.existsSync(src)) return { configured: false };
+  const out = { configured: true, copied: 0 };
+  try {
+    for (const base of [cfg.backupDir, cfg.copyDir].filter(Boolean)) {
+      const dest = path.join(base, 'ad-media');
+      fs.mkdirSync(dest, { recursive: true });
+      for (const name of fs.readdirSync(src)) {
+        if (!/^[a-f0-9]{24}\.(jpg|png|webp|gif|mp4|webm|mov)$/.test(name) || fs.existsSync(path.join(dest, name))) continue;
+        fs.copyFileSync(path.join(src, name), path.join(dest, name));
+        out.copied++;
+      }
+    }
+    out.ok = true;
+  } catch (err) { out.ok = false; out.error = err.message; console.error('Ad media backup copy failed:', err.message); }
+  return out;
+}
 async function runRestoreTestNow(file) {
   const target = file || (listBackups()[0] && path.join(cfg.backupDir, listBackups()[0].name));
   if (!target) return { ok: false, error: 'there is no backup to test' };
@@ -262,9 +283,10 @@ async function runBackupCycle(trigger) {
   const expected = await liveCounts().catch(() => null);
   const removed = pruneBackups(cfg.backupDir);
   const offsite = copyOffsite(made.out);
+  const adMediaCopy = mirrorAdMedia();
   const last = new Date().toISOString();
   const status = (await db.getSettings()).backup || {};
-  await saveBackupStatus({ last, lastFile: made.filename, lastTrigger: trigger, lastSizeBytes: v.sizeBytes, lastVerify: { ok: true, at: last, file: made.filename }, counts: expected, removedOld: removed.length, offsite, policy: cfg.policy });
+  await saveBackupStatus({ last, lastFile: made.filename, lastTrigger: trigger, lastSizeBytes: v.sizeBytes, lastVerify: { ok: true, at: last, file: made.filename }, counts: expected, removedOld: removed.length, offsite, adMediaCopy, policy: cfg.policy });
   if (previous && v.sizeBytes < previous.sizeBytes * 0.6) await sendAlert('backup-shrank', 'Database backup is much smaller than the last one', `${made.filename} is ${(v.sizeBytes / 1048576).toFixed(1)} MB, the one before was ${(previous.sizeBytes / 1048576).toFixed(1)} MB. Data may have been lost.`);
   if (offsite.configured && !offsite.ok) await sendAlert('offsite-failed', 'Backup copy to the second location FAILED', offsite.error);
   const lastTestAt = status.restoreTest && status.restoreTest.at ? new Date(status.restoreTest.at).getTime() : 0;
@@ -363,6 +385,7 @@ function start() {
 }
 
 module.exports = {
+  mirrorAdMedia,
   configure, cfg, start, runBackupCycle, runRestoreTestNow, restoreTest, verifyDump, pickBackupsToKeep, pruneBackups, listBackups, parseStamp,
   sendAlert, sendTestAlert, recipientCanReceive, checkAppServer, checkSpikes, systemHealth, liveCounts, watch, SPIKE_LIMITS, KEY_TABLES,
 };
